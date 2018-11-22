@@ -1,0 +1,117 @@
+<html>
+<head>
+    <link rel="stylesheet" href="static/xterm.css" />
+    <link rel="stylesheet" href="static/bootstrap.min.css" />
+    <script src="static/xterm.js"></script>
+    <script src="static/jquery.min.js"></script>
+    <script src="static/bootstrap.min.js"></script>
+    <style>
+        body {
+            color: #111;
+            margin: 20px;
+        }
+
+        #terminal-container {
+            margin: 0 auto;
+        }
+        #connect {
+            margin: 0 auto;
+        }
+        #terminal-container a {
+            color: #fff;
+        }
+        .panel-body{
+            background-color: #000;
+        }
+    </style>
+</head>
+<body>
+
+<form class="form-inline">
+    <div class="form-group">
+        <label for="">docker hostIP</label>
+        <input type="text" class="form-control" name="h"></div>
+    <div class="form-group">
+        <label for="">docker port</label>
+        <input type="text" class="form-control" name="p"></div>
+    <div class="form-group">
+        <label for="">docker ID</label>
+        <input type="text" class="form-control" name="containers_id"></div>
+    <button type="button" class="btn btn-default" onclick="ws_connect()" id="connect_container">连接</button>
+    <button type="button" class="btn btn-default" onclick="ws_close()" id="drop_container" style="display:none">断开</button>
+</form>
+<div class="panel panel-default">
+    <div class="panel-body">
+        <div id="terminal-container"></div>
+    </div>
+</div>
+<script>
+    //获取主机 端口
+    hostname=location.hostname
+    port=location.port
+    // 获取宽度和高度
+    console.log(document.body.clientWidth)
+    cols=parseInt(document.body.clientWidth /9)
+    rows=parseInt(document.body.clientHeight / 25)
+    var socket
+    // 定义term对象
+    var term = new Terminal({
+        "cursorBlink":true,
+        "rows":rows,
+        "cols":cols,
+    })
+    // 定义ws链接
+    function ws_connect(){
+        console.log("hell")
+        // 隐藏连接按钮显示断开按钮
+        $("#connect_container").hide()
+        $("#drop_container").show()
+        h=$("input[name=h]").val()
+        p=$("input[name=p]").val()
+        // 获取容器id
+        containers_id=$("input[name=containers_id]").val()
+        // 打印容器id
+        console.log(h,p,containers_id)
+        if( h == "" || p == "" || containers_id == ""){
+            alert("不能为空!")
+            return false
+        }
+        // 获取term div
+        container = document.getElementById('terminal-container');
+        // 生成参数
+        url = 'ws://'+hostname+':'+port+'/ws?h='+h+'&p='+p+'&containers_id='+containers_id+'&rows='+rows+'&cols='+cols
+        // 生成socket对象
+        console.log(url)
+        socket = new WebSocket(url);
+        $("#terminal-container").html("")
+        // 生成term对象
+        term.open(document.getElementById('terminal-container'));
+        // 打印term对象
+        console.log(term)
+        //term.toggleFullscreen(true);
+
+        term.on('data', function (data) {
+            socket.send(data);
+            console.log("发送数据",data)
+        });
+
+        socket.onmessage = function (e) {
+            console.log(e)
+            obj=JSON.parse(e.data);
+            term.write(obj.data);
+            console.log("接收数据",obj.data)
+        }
+        socket.onclose = function (e) {
+            term.write("session is close");
+            $("#connect_container").show()
+            $("#drop_container").hide()
+        }
+    }
+    function ws_close(){
+        socket.close()
+        $("#connect_container").show()
+        $("#drop_container").hide()
+    }
+</script>
+</body>
+</html>
