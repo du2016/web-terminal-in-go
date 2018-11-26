@@ -14,7 +14,7 @@
 
 
 通过web界面连接k8s容器，需要修改beego config配置，指定kubeconfig位置，设置为空则为incluster连接方式，需要传递以下参数：
-
+- context
 - namespace
 - podname
 - containername
