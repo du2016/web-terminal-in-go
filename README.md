@@ -5,9 +5,9 @@
 
 通过web界面连接容器，需要开放docker api,需要传递以下参数：
 
-- 宿主机ip
-- 端口
-- 容器id
+- host ip
+- docker port
+- container id
 
 
 ### k8s-webshell
