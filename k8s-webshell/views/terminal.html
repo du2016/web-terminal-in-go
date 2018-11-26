@@ -81,7 +81,7 @@
         // href=http://xxx:port
         // href=/
         localurl=window.location.href.split('/')[2]
-        url = 'ws://'+localurl+'/terminal/ws?namespace={{.namespace}}&pod={{.pod}}&container={{.container}}&rows='+rows+'&cols='+cols
+        url = 'ws://'+localurl+'/terminal/ws?context={{.context}}&namespace={{.namespace}}&pod={{.pod}}&container={{.container}}&rows='+rows+'&cols='+cols
         console.log(url)
         // 生成socket对象
         socket = new WebSocket(url);
