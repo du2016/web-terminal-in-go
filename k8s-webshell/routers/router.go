@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-    beego.Router("/", &controllers.HomeController{})
+    	beego.Router("/", &controllers.HomeController{})
 	beego.Router("/terminal", &controllers.TerminalController{}, "get:Get")
 	beego.Handler("/terminal/ws", websocket.Handler(controllers.EchoHandler))
 }

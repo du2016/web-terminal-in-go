@@ -26,8 +26,16 @@ func (self *terminalsize) Next() *remotecommand.TerminalSize {
 	return <-self.C
 }
 
-func Handler(r io.Reader, w io.Writer, podname string, namespace string, container string, rows string, cols string,cmd string) error {
-	config, err := clientcmd.BuildConfigFromFlags("", beego.AppConfig.String("kubeconfig"))
+func buildConfigFromContextFlags(context, kubeconfigPath string) (*rest.Config, error) {
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		&clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfigPath},
+		&clientcmd.ConfigOverrides{
+			CurrentContext: context,
+		}).ClientConfig()
+}
+
+func Handler(r io.Reader, w io.Writer, context string, namespace string, podname string, container string, rows string, cols string,cmd string) error {
+	config, err := buildConfigFromContextFlags(context, beego.AppConfig.String("kubeconfig"))
 	if err != nil {
 		return err
 	}
@@ -102,14 +110,15 @@ func Handler(r io.Reader, w io.Writer, podname string, namespace string, contain
 func EchoHandler(ws *websocket.Conn) {
 	defer ws.Close()
 	r := ws.Request()
+	context := r.FormValue("context")
 	namespace := r.FormValue("namespace")
 	pod := r.FormValue("pod")
 	container := r.FormValue("container")
 	rows := r.FormValue("rows")
 	cols := r.FormValue("cols")
-	beego.Error(pod, namespace, container, rows, cols)
-	if err:=Handler(ws, ws, pod, namespace, container, cols, rows,"/bin/bash");err!=nil {
-		log.Println(err)
-		log.Println(Handler(ws, ws, pod, namespace, container, cols, rows,"/bin/sh"))
+	beego.Info(context, namespace, pod, container, rows, cols)
+	if err:=Handler(ws, ws, context, namespace, pod, container, cols, rows,"/bin/bash"); err!=nil {
+		beego.Error(err)
+		log.Println(Handler(ws, ws, context, namespace,  pod, container, cols, rows,"/bin/sh"))
 	}
 }
