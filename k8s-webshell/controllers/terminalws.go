@@ -13,7 +13,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/kubernetes/pkg/util/interrupt"
-	"k8s.io/kubernetes/vendor-bak/github.com/docker/docker/pkg/term"
+	"github.com/docker/docker/pkg/term"
 	"net/http"
 )
 
@@ -100,9 +100,7 @@ func Handler(ws *websocket.Conn, context string, namespace string, podname strin
 		if err != nil {
 			return err
 		}
-
 		return executor.Stream(remotecommand.StreamOptions{
-			//SupportedProtocols: remotecommandconsts.SupportedStreamingProtocols,
 			Stdin:             t,
 			Stdout:            ws,
 			Stderr:            ws,
@@ -110,7 +108,6 @@ func Handler(ws *websocket.Conn, context string, namespace string, podname strin
 			TerminalSizeQueue: t,
 		})
 	}
-
 	inFd, isTerminal := term.GetFdInfo(ws)
 	beego.Info(isTerminal)
 	state, err := term.SaveState(inFd)
