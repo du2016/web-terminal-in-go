@@ -18,3 +18,10 @@
 - namespace
 - podname
 - containername
+
+
+#### 功能
+
+- web终端实现
+- 多集群支持
+- 根据浏览器窗口调整tty大小
