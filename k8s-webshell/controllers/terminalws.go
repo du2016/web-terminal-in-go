@@ -1,29 +1,48 @@
 package controllers
 
 import (
+	"encoding/json"
 	"github.com/astaxie/beego"
 	"golang.org/x/net/websocket"
-	"io"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
+	"k8s.io/kubernetes/pkg/util/interrupt"
+	"k8s.io/kubernetes/vendor-bak/github.com/docker/docker/pkg/term"
 	"net/http"
-	"strconv"
-	"k8s.io/client-go/kubernetes/scheme"
-	"log"
 )
 
+func (self terminalsize) Read(p []byte) (int, error) {
+	var reply string
+	var msg map[string]uint16
+	if err := websocket.Message.Receive(self.conn, &reply); err != nil {
+		return 0, err
+	}
+	if err := json.Unmarshal([]byte(reply), &msg); err != nil {
+		return copy(p, reply), nil
+	} else {
+		self.sizeChan <- &remotecommand.TerminalSize{
+			msg["cols"],
+			msg["rows"],
+		}
+		return 0, nil
+	}
+}
 
 type terminalsize struct {
-	C chan *remotecommand.TerminalSize
+	conn     *websocket.Conn
+	sizeChan chan *remotecommand.TerminalSize
 }
 
 func (self *terminalsize) Next() *remotecommand.TerminalSize {
-	return <-self.C
+	size := <-self.sizeChan
+	beego.Debug("terminal size to width: %s height: %s", size.Width,size.Height)
+	return size
 }
 
 func buildConfigFromContextFlags(context, kubeconfigPath string) (*rest.Config, error) {
@@ -34,7 +53,7 @@ func buildConfigFromContextFlags(context, kubeconfigPath string) (*rest.Config, 
 		}).ClientConfig()
 }
 
-func Handler(r io.Reader, w io.Writer, context string, namespace string, podname string, container string, rows string, cols string,cmd string) error {
+func Handler(ws *websocket.Conn, context string, namespace string, podname string, container string, cmd string) error {
 	config, err := buildConfigFromContextFlags(context, beego.AppConfig.String("kubeconfig"))
 	if err != nil {
 		return err
@@ -51,60 +70,53 @@ func Handler(r io.Reader, w io.Writer, context string, namespace string, podname
 	if err != nil {
 		return err
 	}
-
-	req := restclient.Post().
-		Resource("pods").
-		Name(podname).
-		Namespace(namespace).
-		SubResource("exec").
-		Param("container", container).
-		Param("stdin", "true").
-		Param("stdout", "true").
-		Param("stderr", "true").
-		Param("command", cmd).Param("tty", "true")
-	c := make(chan *remotecommand.TerminalSize)
-	t := &terminalsize{c}
-	req.VersionedParams(
-		&v1.PodExecOptions{
-			Container: container,
-			Command:   []string{},
-			Stdin:     true,
-			Stdout:    true,
-			Stderr:    true,
-			TTY:       true,
-		},
-		scheme.ParameterCodec,
-	)
-	executor, err := remotecommand.NewSPDYExecutor(
-		config, http.MethodPost, req.URL(),
-	)
-	if err != nil {
-		return err
-	}
-
-	ro, err := strconv.Atoi(rows)
-	if err != nil {
-		return err
-	}
-	wo, err := strconv.Atoi(cols)
-	if err != nil {
-		return err
-	}
-	go func() {
-		c <- &remotecommand.TerminalSize{
-			Width:  uint16(ro),
-			Height: uint16(wo),
+	fn := func() error {
+		req := restclient.Post().
+			Resource("pods").
+			Name(podname).
+			Namespace(namespace).
+			SubResource("exec").
+			Param("container", container).
+			Param("stdin", "true").
+			Param("stdout", "true").
+			Param("stderr", "true").
+			Param("command", cmd).Param("tty", "true")
+		c := make(chan *remotecommand.TerminalSize)
+		t := &terminalsize{ws, c}
+		req.VersionedParams(
+			&v1.PodExecOptions{
+				Container: container,
+				Command:   []string{},
+				Stdin:     true,
+				Stdout:    true,
+				Stderr:    true,
+				TTY:       true,
+			},
+			scheme.ParameterCodec,
+		)
+		executor, err := remotecommand.NewSPDYExecutor(
+			config, http.MethodPost, req.URL(),
+		)
+		if err != nil {
+			return err
 		}
-	}()
-	err = executor.Stream(remotecommand.StreamOptions{
-		//SupportedProtocols: remotecommandconsts.SupportedStreamingProtocols,
-		Stdin:              r,
-		Stdout:             w,
-		Stderr:             w,
-		Tty:                true,
-		TerminalSizeQueue:  t,
-	})
-	return err
+
+		return executor.Stream(remotecommand.StreamOptions{
+			//SupportedProtocols: remotecommandconsts.SupportedStreamingProtocols,
+			Stdin:             t,
+			Stdout:            ws,
+			Stderr:            ws,
+			Tty:               true,
+			TerminalSizeQueue: t,
+		})
+	}
+
+	inFd, isTerminal := term.GetFdInfo(ws)
+	beego.Info(isTerminal)
+	state, err := term.SaveState(inFd)
+	return interrupt.Chain(nil, func() {
+		term.RestoreTerminal(inFd, state)
+	}).Run(fn)
 }
 
 func EchoHandler(ws *websocket.Conn) {
@@ -114,11 +126,10 @@ func EchoHandler(ws *websocket.Conn) {
 	namespace := r.FormValue("namespace")
 	pod := r.FormValue("pod")
 	container := r.FormValue("container")
-	rows := r.FormValue("rows")
-	cols := r.FormValue("cols")
-	beego.Info(context, namespace, pod, container, rows, cols)
-	if err:=Handler(ws, ws, context, namespace, pod, container, cols, rows,"/bin/bash"); err!=nil {
+	beego.Debug("connect context: %s namespace: %s pod: %s container: %s ", context, namespace, pod, container)
+	if err := Handler(ws, context, namespace, pod, container, "/bin/bash"); err != nil {
 		beego.Error(err)
-		log.Println(Handler(ws, ws, context, namespace,  pod, container, cols, rows,"/bin/sh"))
+		beego.Error(Handler(ws, context, namespace, pod, container, "/bin/sh"))
 	}
+	Handler(ws, context, namespace, pod, container, "exit")
 }

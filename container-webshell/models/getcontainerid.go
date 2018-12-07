@@ -2,22 +2,22 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strings"
-	"fmt"
 )
 
 type Contect struct {
 	Id string
 }
 
-func Getexecid(host string,port string,containerid string) string {
+func Getexecid(host string, port string, containerid string) string {
 	log.SetFlags(log.Llongfile)
 	client := &http.Client{}
 	request, err := http.NewRequest("POST",
-		fmt.Sprintf("http://%s:%s/containers/%s/exec",host,port,containerid),
+		fmt.Sprintf("http://%s:%s/containers/%s/exec", host, port, containerid),
 		strings.NewReader("{\"Tty\": true, \"Cmd\": [\"/bin/sh\"], \"AttachStdin\": true, \"AttachStderr\": true, \"Privileged\": true, \"AttachStdout\": true}"),
 	)
 	if err != nil {
@@ -40,20 +40,19 @@ func Getexecid(host string,port string,containerid string) string {
 	return v.Id
 }
 
-
-func Resizecontainer(host string,port string,execid string,width string,height string){
-	request,err:=http.NewRequest(
+func Resizecontainer(host string, port string, execid string, width string, height string) {
+	request, err := http.NewRequest(
 		"POST",
-		fmt.Sprintf("http://%s:%s/exec/%s/resize?h=%s&w=%s",host,port,execid,width,height),
+		fmt.Sprintf("http://%s:%s/exec/%s/resize?h=%s&w=%s", host, port, execid, width, height),
 		nil,
 	)
-	if err!=nil {
+	if err != nil {
 		log.Println(err)
 	}
-	request.Header.Set("Content-Type","text/plain")
+	request.Header.Set("Content-Type", "text/plain")
 	client := &http.Client{}
-	_,err=client.Do(request)
-	if err!=nil {
+	_, err = client.Do(request)
+	if err != nil {
 		log.Println(err)
 	}
 }

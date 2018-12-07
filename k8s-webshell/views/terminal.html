@@ -29,14 +29,6 @@
             color: #00ff00;
         }
     </style>
-    <script type="text/javascript">
-
-        $(document).ready(function(){
-
-            ws_connect();
-        });
-
-    </script>
 </head>
 <body style="border-width: 0px;margin:0px">
 
@@ -47,20 +39,25 @@
         <div id="terminal-container"></div>
     </div>
 <script>
+     $(document).ready(function(){
+         ws_connect();
+     });
+
+     // 获取宽度和高度
+     console.log(document.body.clientWidth)
+     cols=parseInt(document.body.clientWidth /9)
+     rows=parseInt(document.body.clientHeight / 20)
+     console.log(rows,cols)
+     // 定义term对象
+     var term = new Terminal({
+         "cursorBlink":true,
+         "rows":rows,
+         "cols":cols,
+     });
+
     // 定义ws链接
     function ws_connect(){
-        // 获取宽度和高度
-        console.log(document.body.clientWidth)
-        cols=parseInt(document.body.clientWidth /9)
-        rows=parseInt(document.body.clientHeight / 20)
-        console.log(rows,cols)
         var socket
-        // 定义term对象
-        var term = new Terminal({
-            "cursorBlink":true,
-            "rows":rows,
-            "cols":cols,
-        });
         // 隐藏连接按钮显示断开按钮
         $("#connect_container").hide()
         $("#drop_container").show()
@@ -77,43 +74,39 @@
         // 获取term div
         container = document.getElementById('terminal-container');
         // 生成参数
-        //'ws://xxxx:port'
-        // href=http://xxx:port
-        // href=/
         localurl=window.location.href.split('/')[2]
         url = 'ws://'+localurl+'/terminal/ws?context={{.context}}&namespace={{.namespace}}&pod={{.pod}}&container={{.container}}&rows='+rows+'&cols='+cols
         console.log(url)
         // 生成socket对象
         socket = new WebSocket(url);
         $("#terminal-container").html("")
-        // 生成term对象
         term.open(document.getElementById('terminal-container'));
-        // 打印term对象
-        console.log(term)
-        term.colors
-        //term.toggleFullscreen(true);
         term.on('data', function (data) {
-            socket.send(data);
-            // console.log("发送数据",data)
+            if (socket.readyState == 1) {
+                socket.send(data);
+            }
         });
-
         socket.onmessage = function (e) {
-            // console.log(e)
-            // var escapable = /[\x00-\x1f\ud800-\udfff\u200c-\u200f\u2028-\u202f\u2060-\u206f\ufff0-\uffff]/g;
-
             term.write(e.data);
-            // alert(e.data)
         };
         socket.onclose = function (e) {
-            term.write("session is close");
-            $("#connect_container").show()
-            $("#drop_container").hide()
+             term.write("session is close");
+             $("#connect_container").show()
+             $("#drop_container").hide()
+        };
+        socket.onopen = function () {
+                resize(socket)
+        };
+        window.onresize=function(){
+                resize(socket)
         }
+
     }
-    function ws_close(){
-        socket.close()
-        $("#connect_container").show()
-        $("#drop_container").hide()
+    function resize(socket) {
+        cols=parseInt(document.body.clientWidth /9)
+        rows=parseInt(document.body.clientHeight / 20)
+        term.resize(cols,rows)
+        socket.send('{"cols":'+cols+',"rows":'+rows+'}')
     }
 </script>
 </body>
