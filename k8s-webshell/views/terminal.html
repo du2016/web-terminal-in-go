@@ -7,6 +7,7 @@
     <meta http-equiv="Content-Type" content="text/html;charset=utf-8">
     <script src="static/js/jquery.min.js"></script>
     <script src="static/js/bootstrap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <style>
         body {
             color: #111;
@@ -75,10 +76,10 @@
         container = document.getElementById('terminal-container');
         // 生成参数
         localurl=window.location.href.split('/')[2]
-        url = 'ws://'+localurl+'/terminal/ws?context={{.context}}&namespace={{.namespace}}&pod={{.pod}}&container={{.container}}&rows='+rows+'&cols='+cols
+        url = 'http://'+localurl+'/terminal/ws?context={{.context}}&namespace={{.namespace}}&pod={{.pod}}&container={{.container}}&rows='+rows+'&cols='+cols
         console.log(url)
         // 生成socket对象
-        socket = new WebSocket(url);
+        socket = new SockJS(url);
         $("#terminal-container").html("")
         term.open(document.getElementById('terminal-container'));
         term.on('data', function (data) {

@@ -2,8 +2,10 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/astaxie/beego"
-	"golang.org/x/net/websocket"
+	"github.com/docker/docker/pkg/term"
+	"gopkg.in/igm/sockjs-go.v2/sockjs"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -13,14 +15,14 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/kubernetes/pkg/util/interrupt"
-	"github.com/docker/docker/pkg/term"
 	"net/http"
 )
 
-func (self terminalsize) Read(p []byte) (int, error) {
+func (self TerminalSockjs) Read(p []byte) (int, error) {
 	var reply string
 	var msg map[string]uint16
-	if err := websocket.Message.Receive(self.conn, &reply); err != nil {
+	reply, err := self.conn.Recv()
+	if err != nil {
 		return 0, err
 	}
 	if err := json.Unmarshal([]byte(reply), &msg); err != nil {
@@ -34,14 +36,24 @@ func (self terminalsize) Read(p []byte) (int, error) {
 	}
 }
 
-type terminalsize struct {
-	conn     *websocket.Conn
-	sizeChan chan *remotecommand.TerminalSize
+func (self TerminalSockjs) Write(p []byte) (int, error) {
+	err := self.conn.Send(string(p))
+	return len(p), err
 }
 
-func (self *terminalsize) Next() *remotecommand.TerminalSize {
+type TerminalSockjs struct {
+	conn      sockjs.Session
+	sizeChan  chan *remotecommand.TerminalSize
+	context   string
+	namespace string
+	pod       string
+	container string
+}
+
+// 实现tty size queue
+func (self *TerminalSockjs) Next() *remotecommand.TerminalSize {
 	size := <-self.sizeChan
-	beego.Debug("terminal size to width: %s height: %s", size.Width,size.Height)
+	beego.Debug(fmt.Sprintf("terminal size to width: %d height: %d", size.Width, size.Height))
 	return size
 }
 
@@ -53,8 +65,9 @@ func buildConfigFromContextFlags(context, kubeconfigPath string) (*rest.Config, 
 		}).ClientConfig()
 }
 
-func Handler(ws *websocket.Conn, context string, namespace string, podname string, container string, cmd string) error {
-	config, err := buildConfigFromContextFlags(context, beego.AppConfig.String("kubeconfig"))
+// 处理输入输出与sockjs 交互
+func Handler(t *TerminalSockjs, cmd string) error {
+	config, err := buildConfigFromContextFlags(t.context, beego.AppConfig.String("kubeconfig"))
 	if err != nil {
 		return err
 	}
@@ -73,19 +86,17 @@ func Handler(ws *websocket.Conn, context string, namespace string, podname strin
 	fn := func() error {
 		req := restclient.Post().
 			Resource("pods").
-			Name(podname).
-			Namespace(namespace).
+			Name(t.pod).
+			Namespace(t.namespace).
 			SubResource("exec").
-			Param("container", container).
+			Param("container", t.container).
 			Param("stdin", "true").
 			Param("stdout", "true").
 			Param("stderr", "true").
 			Param("command", cmd).Param("tty", "true")
-		c := make(chan *remotecommand.TerminalSize)
-		t := &terminalsize{ws, c}
 		req.VersionedParams(
 			&v1.PodExecOptions{
-				Container: container,
+				Container: t.container,
 				Command:   []string{},
 				Stdin:     true,
 				Stdout:    true,
@@ -102,31 +113,33 @@ func Handler(ws *websocket.Conn, context string, namespace string, podname strin
 		}
 		return executor.Stream(remotecommand.StreamOptions{
 			Stdin:             t,
-			Stdout:            ws,
-			Stderr:            ws,
+			Stdout:            t,
+			Stderr:            t,
 			Tty:               true,
 			TerminalSizeQueue: t,
 		})
 	}
-	inFd, isTerminal := term.GetFdInfo(ws)
-	beego.Info(isTerminal)
+	inFd, _ := term.GetFdInfo(t.conn)
 	state, err := term.SaveState(inFd)
 	return interrupt.Chain(nil, func() {
 		term.RestoreTerminal(inFd, state)
 	}).Run(fn)
 }
 
-func EchoHandler(ws *websocket.Conn) {
-	defer ws.Close()
-	r := ws.Request()
+// 实现http.handler 接口获取入参
+func (self TerminalSockjs) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	context := r.FormValue("context")
 	namespace := r.FormValue("namespace")
 	pod := r.FormValue("pod")
 	container := r.FormValue("container")
-	beego.Debug("connect context: %s namespace: %s pod: %s container: %s ", context, namespace, pod, container)
-	if err := Handler(ws, context, namespace, pod, container, "/bin/bash"); err != nil {
-		beego.Error(err)
-		beego.Error(Handler(ws, context, namespace, pod, container, "/bin/sh"))
+	Sockjshandler := func(session sockjs.Session) {
+		t := &TerminalSockjs{session, make(chan *remotecommand.TerminalSize),
+			context, namespace, pod, container}
+		if err := Handler(t, "/bin/bash"); err != nil {
+			beego.Error(err)
+			beego.Error(Handler(t, "/bin/sh"))
+		}
 	}
-	Handler(ws, context, namespace, pod, container, "exit")
+
+	sockjs.NewHandler("/terminal/ws", sockjs.DefaultOptions, Sockjshandler).ServeHTTP(w, r)
 }
