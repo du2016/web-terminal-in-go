@@ -2,4 +2,3 @@
 GOOS=linux go build -o bin/k8s-webshell-linux
 GOOS=darwin go build -o bin/k8s-webshell-mac
 GOOS=windows go build -o bin/k8s-webshell.exe
-sed -i "" "s/^.*kubeconfig.*$/kubeconfig = your kubeconfig/g" conf/app.conf
