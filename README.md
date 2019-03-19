@@ -30,4 +30,4 @@
 
 ### 演示
 
-![demo](./demo.gif)
+<img src="./demo.gif" width="400" height="300" alt="抽奖">
