@@ -7,9 +7,9 @@ require (
 	golang.org/x/crypto v0.1.0 // indirect
 	gopkg.in/igm/sockjs-go.v2 v2.1.0
 	gopkg.in/yaml.v2 v2.3.0 // indirect
-	k8s.io/api v0.18.2
-	k8s.io/apimachinery v0.18.2
-	k8s.io/client-go v0.18.2
+	k8s.io/api v0.18.14
+	k8s.io/apimachinery v0.18.14
+	k8s.io/client-go v0.18.14
 )
 
 require (
